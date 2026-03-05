@@ -137,9 +137,6 @@ router.get('/profile', authMiddleware, async (req, res) => {
 module.exports = router;
 
 
-
-
-
 // // PATCH unit status
 // router.patch('/:unitId/status', authMiddleware, async (req, res) => {
 //   const { unitId } = req.params;
