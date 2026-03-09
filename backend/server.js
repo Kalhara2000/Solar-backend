@@ -19,5 +19,5 @@ app.use('/api/solar-units', solarUnitRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`CEB Solar Backend running on http://localhost:${PORT}`);
+  console.log(`🚀 CEB Solar Backend running on http://localhost:${PORT}`);
 });
