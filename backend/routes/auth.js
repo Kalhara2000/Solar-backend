@@ -96,10 +96,10 @@ router.post('/login', async (req, res) => {
         uid,
         cebId: userData.cebId,
         name: userData.name,
-        role: userData.role || 'user'
+        role: userData.role
       },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' } // short for security
+      // { expiresIn: 'never' } // for security 12h
     );
 
 
