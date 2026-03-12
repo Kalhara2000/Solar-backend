@@ -135,27 +135,3 @@ router.get('/profile', authMiddleware, async (req, res) => {
 
 
 module.exports = router;
-
-
-// // PATCH unit status
-// router.patch('/:unitId/status', authMiddleware, async (req, res) => {
-//   const { unitId } = req.params;
-//   const { status } = req.body;
-
-//   try {
-//     const unitRef = db.ref(`solarUnits/${unitId}`);
-//     const snapshot = await unitRef.once('value');
-
-//     if (!snapshot.exists()) {
-//       return res.status(404).json({ error: 'Solar unit not found' });
-//     }
-
-//     await unitRef.update({ status, lastUpdated: Date.now() });
-
-//     const updatedUnit = (await unitRef.once('value')).val();
-//     res.json(updatedUnit);
-//   } catch (err) {
-//     console.error('Update status error:', err);
-//     res.status(500).json({ error: 'Failed to update status' });
-//   }
-// });
