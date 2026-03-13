@@ -1,36 +1,28 @@
-//backend/routes/auth.js
-
+// routes/auth.js
 const express = require('express');
 const router = express.Router();
 const { auth, db } = require('../config/firebase');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/auth');
 
-
-
-
-// REGISTER - Create user with Firebase Auth + save profile in DB
+// ------------------- REGISTER -------------------
 router.post('/register', async (req, res) => {
   const { name, cebId, password, role = 'user' } = req.body;
 
-  if (!name?.trim() || !cebId?.trim() || !password) {
-    return res.status(400).json({
-      error: 'Name, CEB ID and password are required'
-    });
-  }
+  if (!name?.trim() || !cebId?.trim() || !password)
+    return res.status(400).json({ error: 'Name, CEB ID and password are required' });
 
   try {
     const fakeEmail = `${cebId.toLowerCase().trim()}@ceb.local`;
 
-    // 1. Create Firebase Auth user
     const userRecord = await auth.createUser({
       email: fakeEmail,
       password,
       displayName: name.trim()
     });
 
-    // 2. Save profile
     await db.ref(`users/${userRecord.uid}`).set({
+      uid: userRecord.uid,
       name: name.trim(),
       cebId: cebId.toUpperCase().trim(),
       role,
@@ -38,100 +30,51 @@ router.post('/register', async (req, res) => {
       lastLogin: null
     });
 
-    res.status(201).json({
-      message: 'Registration successful. Please login.',
-      uid: userRecord.uid
-    });
+    res.status(201).json({ message: 'Registration successful. Please login.', uid: userRecord.uid });
   } catch (error) {
     console.error('Registration error:', error);
-
-    if (error.code === 'auth/email-already-exists') {
-      return res.status(409).json({
-        error: 'This CEB ID is already registered'
-      });
-    }
-
-    if (error.code === 'auth/invalid-password') {
-      return res.status(400).json({
-        error: 'Password must be at least 6 characters'
-      });
-    }
-
-    res.status(500).json({
-      error: 'Registration failed. Try again later.'
-    });
+    if (error.code === 'auth/email-already-exists') return res.status(409).json({ error: 'This CEB ID is already registered' });
+    if (error.code === 'auth/invalid-password') return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    res.status(500).json({ error: 'Registration failed. Try again later.' });
   }
 });
 
-
-
-
-
-
-
-// LOGIN - Frontend uses Firebase SDK, sends ID token → backend verifies & issues JWT
+// ------------------- LOGIN -------------------
 router.post('/login', async (req, res) => {
-  const { idToken } = req.body; // ← Frontend must send Firebase ID token
+  const { idToken } = req.body;
 
-  if (!idToken) {
-    return res.status(400).json({ error: 'ID token is required' });
-  }
+  if (!idToken) return res.status(400).json({ error: 'ID token is required' });
 
   try {
-    // 1. Verify Firebase ID Token
     const decodedToken = await auth.verifyIdToken(idToken);
     const uid = decodedToken.uid;
 
-    // 2. Get user profile from DB
     const snapshot = await db.ref(`users/${uid}`).once('value');
     const userData = snapshot.val();
+    if (!userData) return res.status(404).json({ error: 'User profile not found' });
 
-    if (!userData) {
-      return res.status(404).json({ error: 'User profile not found' });
-    }
+    // 🔹 Backend JWT for frontend
+    const token = jwt.sign({ uid, cebId: userData.cebId, name: userData.name, role: userData.role }, process.env.JWT_SECRET, { expiresIn: '8h' });
 
-    // 3. Issue custom JWT (short-lived)
-    const customToken = jwt.sign(
-      {
-        uid,
-        cebId: userData.cebId,
-        name: userData.name,
-        role: userData.role
-      },
-      process.env.JWT_SECRET,
-      // { expiresIn: 'never' } // for security 12h
-    );
-
-
-    // 4. Update last login
     await db.ref(`users/${uid}`).update({ lastLogin: Date.now() });
 
-    res.json({
-      token: customToken,
-      user: {
-        cebId: userData.cebId,
-        name: userData.name,
-        role: userData.role
-      }
-    });
+    res.json({ token, user: { uid, name: userData.name, role: userData.role, cebId: userData.cebId } });
   } catch (error) {
     console.error('Login verification error:', error);
-    res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({ error: 'Invalid or expired Firebase token' });
   }
 });
 
-// Protected: Get own profile
+// ------------------- GET PROFILE -------------------
 router.get('/profile', authMiddleware, async (req, res) => {
   try {
     const snapshot = await db.ref(`users/${req.user.uid}`).once('value');
-    if (!snapshot.exists()) {
-      return res.status(404).json({ error: 'Profile not found' });
-    }
+    if (!snapshot.exists()) return res.status(404).json({ error: 'Profile not found' });
     res.json(snapshot.val());
   } catch (err) {
+    console.error('Fetch profile error:', err);
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
-
 
 module.exports = router;

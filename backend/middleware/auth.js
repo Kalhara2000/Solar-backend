@@ -1,8 +1,10 @@
+// middleware/auth.js
 const jwt = require('jsonwebtoken');
 
 module.exports = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
+  // 🔹 Check if token exists
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No authorization token provided' });
   }
@@ -11,10 +13,8 @@ module.exports = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     // decoded = { uid, cebId, role, iat, exp }
-    req.user = decoded;
-
+    req.user = decoded; 
     next();
   } catch (error) {
     console.error('JWT verification failed:', error.message);

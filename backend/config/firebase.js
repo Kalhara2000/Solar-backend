@@ -1,13 +1,16 @@
 // config/firebase.js
-
 const admin = require("firebase-admin");
 const serviceAccount = require("./serviceAccountKey.json");
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: process.env.FIREBASE_DB_URL,
-});
+// Initialize Firebase admin only once
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: process.env.FIREBASE_DB_URL, // e.g., https://your-project.firebaseio.com
+  });
+}
 
+// Auth & Database instances
 const auth = admin.auth();
 const db = admin.database();
 
@@ -20,4 +23,5 @@ db.ref(".info/connected").on("value", (snapshot) => {
   }
 });
 
-module.exports = { auth, db };
+// ✅ Export all needed modules
+module.exports = { admin, auth, db };
