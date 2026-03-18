@@ -12,6 +12,28 @@ router.post('/register', async (req, res) => {
   if (!name?.trim() || !cebId?.trim() || !password)
     return res.status(400).json({ error: 'Name, CEB ID and password are required' });
 
+  // Check admin limit if the requested role is admin
+  if (role === 'admin') {
+    try {
+      // Get all users with admin role from database
+      const usersSnapshot = await db.ref('users').once('value');
+      const users = usersSnapshot.val() || {};
+      
+      // Count existing admin users
+      const adminCount = Object.values(users).filter(user => user.role === 'admin').length;
+      
+      // Check if we've reached the limit of 2 admins
+      if (adminCount >= 2) {
+        return res.status(403).json({ 
+          error: 'Maximum number of admin accounts (2) already created. Cannot register more admins.' 
+        });
+      }
+    } catch (error) {
+      console.error('Error checking admin count:', error);
+      return res.status(500).json({ error: 'Failed to check admin availability. Try again later.' });
+    }
+  }
+
   try {
     const fakeEmail = `${cebId.toLowerCase().trim()}@ceb.local`;
 
@@ -30,11 +52,17 @@ router.post('/register', async (req, res) => {
       lastLogin: null
     });
 
-    res.status(201).json({ message: 'Registration successful. Please login.', uid: userRecord.uid });
+    res.status(201).json({ 
+      message: 'Registration successful. Please login.', 
+      uid: userRecord.uid,
+      role: role // Include role in response for confirmation
+    });
   } catch (error) {
     console.error('Registration error:', error);
-    if (error.code === 'auth/email-already-exists') return res.status(409).json({ error: 'This CEB ID is already registered' });
-    if (error.code === 'auth/invalid-password') return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (error.code === 'auth/email-already-exists') 
+      return res.status(409).json({ error: 'This CEB ID is already registered' });
+    if (error.code === 'auth/invalid-password') 
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
     res.status(500).json({ error: 'Registration failed. Try again later.' });
   }
 });

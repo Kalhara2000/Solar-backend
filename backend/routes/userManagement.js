@@ -77,19 +77,155 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-// ------------------- DELETE USER -------------------
-router.delete("/:uid", authMiddleware, async (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Only admins can delete users" });
+// ------------------- GET SINGLE USER -------------------
+router.get("/:uid", authMiddleware, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Only admins can view user details" });
+  }
 
   const { uid } = req.params;
-  if (req.user.uid === uid) return res.status(400).json({ error: "Cannot delete own account" });
 
   try {
+    // Get user from database
+    const dbSnapshot = await db.ref(`users/${uid}`).once("value");
+    const dbUser = dbSnapshot.val();
+
+    // Get user from Firebase Auth
+    let authUser;
+    try {
+      authUser = await admin.auth().getUser(uid);
+    } catch (authErr) {
+      // If user not found in Auth but exists in DB, still return DB data
+      if (authErr.code === 'auth/user-not-found' && dbUser) {
+        return res.json({
+          uid,
+          name: dbUser.name || "",
+          email: dbUser.email || "No email",
+          role: dbUser.role || "user",
+          cebId: dbUser.cebId || null,
+          disabled: false,
+          createdAt: dbUser.createdAt || null,
+          lastSignIn: dbUser.lastLogin || null,
+        });
+      }
+      throw authErr;
+    }
+
+    // Combine data
+    const userData = {
+      uid,
+      name: dbUser?.name || authUser.displayName || "",
+      email: authUser.email || dbUser?.email || "No email",
+      role: dbUser?.role || "user",
+      cebId: dbUser?.cebId || null,
+      disabled: authUser.disabled || false,
+      emailVerified: authUser.emailVerified || false,
+      createdAt: authUser.metadata.creationTime ? new Date(authUser.metadata.creationTime).getTime() : (dbUser?.createdAt || null),
+      lastSignIn: authUser.metadata.lastSignInTime ? new Date(authUser.metadata.lastSignInTime).getTime() : (dbUser?.lastLogin || null),
+      providers: authUser.providerData.map(p => p.providerId)
+    };
+
+    res.json(userData);
+  } catch (err) {
+    console.error("Fetch user error:", err);
+    
+    if (err.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+
+// ------------------- UPDATE USER -------------------
+router.patch("/:uid", authMiddleware, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Only admins can update users" });
+  }
+
+  const { uid } = req.params;
+  const { name, role } = req.body;
+
+  // Validate input
+  if (!name && !role) {
+    return res.status(400).json({ error: "No valid fields to update" });
+  }
+
+  try {
+    // Update in Database
+    const updates = {};
+    if (name) updates.name = name.trim();
+    if (role) updates.role = role;
+
+    await db.ref(`users/${uid}`).update(updates);
+
+    // Update in Firebase Auth if name is provided
+    if (name) {
+      try {
+        await admin.auth().updateUser(uid, {
+          displayName: name.trim()
+        });
+      } catch (authErr) {
+        console.error("Failed to update Auth user:", authErr);
+        // Don't fail the whole request if Auth update fails
+        // Just log it and continue
+      }
+    }
+
+    // Get updated user data
+    const dbSnapshot = await db.ref(`users/${uid}`).once("value");
+    const updatedDbUser = dbSnapshot.val();
+
+    res.json({
+      message: "User updated successfully",
+      user: {
+        uid,
+        name: updatedDbUser?.name,
+        role: updatedDbUser?.role,
+        cebId: updatedDbUser?.cebId
+      }
+    });
+  } catch (err) {
+    console.error("Update user error:", err);
+    
+    if (err.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: "User not found in authentication" });
+    }
+    
+    res.status(500).json({ error: "Failed to update user" });
+  }
+});
+
+// ------------------- DELETE USER -------------------
+router.delete("/:uid", authMiddleware, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Only admins can delete users" });
+  }
+
+  const { uid } = req.params;
+  
+  if (req.user.uid === uid) {
+    return res.status(400).json({ error: "Cannot delete your own account" });
+  }
+
+  try {
+    // Delete from Database
     await db.ref(`users/${uid}`).remove();
-    await admin.auth().deleteUser(uid);
+    
+    // Delete from Firebase Auth
+    try {
+      await admin.auth().deleteUser(uid);
+    } catch (authErr) {
+      console.error("Auth deletion error:", authErr);
+      // If user doesn't exist in Auth but was in DB, still return success
+      if (authErr.code !== 'auth/user-not-found') {
+        throw authErr;
+      }
+    }
+    
     res.json({ message: "User deleted successfully" });
   } catch (err) {
-    console.error(err);
+    console.error("Delete user error:", err);
     res.status(500).json({ error: err.message });
   }
 });

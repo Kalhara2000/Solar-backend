@@ -15,7 +15,7 @@ app.use(express.json());
 
 // ------------------- Routes -------------------
 app.use('/api/auth', authRoutes);           // Login / Register
-app.use('/api/solar-units', solarUnitRoutes); // Example route
+app.use('/api/solar-units', solarUnitRoutes); // Solar Managemet
 app.use('/api/users', userManagementRoutes);  // User Management
 
 const PORT = process.env.PORT || 5000;
